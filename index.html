@@ -23,11 +23,21 @@
     <div class="title-content">
       <div class="title-leaf">🌿</div>
       <h1 class="title-logo">RHYTHM<br><span class="title-accent">GARDEN</span></h1>
-      <p class="title-sub">Tap the plants on the beat.<br>Keep them alive. Keep the garden growing.</p>
+      <p class="title-sub">Hit plants on the beat before the ring closes.<br>Keep them alive. Keep the garden growing.</p>
+
+      <div class="title-kb">
+        <div class="kb-title">CONTROLS</div>
+        <div class="kb-grid">
+          <kbd class="kb-key">1</kbd><kbd class="kb-key">2</kbd><kbd class="kb-key">3</kbd>
+          <kbd class="kb-key">4</kbd><kbd class="kb-key">5</kbd><kbd class="kb-key">6</kbd>
+        </div>
+        <div class="kb-sub">Keys 1–6 map to each plant · Tap/click on mobile</div>
+      </div>
+
       <div class="title-hints">
-        <div class="hint"><span class="hint-dot perfect"></span>PERFECT = full ring</div>
-        <div class="hint"><span class="hint-dot good"></span>GOOD = near ring</div>
-        <div class="hint"><span class="hint-dot miss"></span>MISS = plant wilts</div>
+        <div class="hint"><span class="hint-dot perfect"></span>PERFECT = ring fully closed</div>
+        <div class="hint"><span class="hint-dot good"></span>GOOD = ring nearly closed</div>
+        <div class="hint"><span class="hint-dot miss"></span>MISS = ring expires or too early</div>
       </div>
       <button class="btn-start" id="btn-start">
         <span class="btn-icon">🌱</span> START GROWING
@@ -54,6 +64,15 @@
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="feedback-layer"></div>
+    <!-- Key hint bar at bottom — shows 1-6 keys lighting up when active -->
+    <div id="key-hint">
+      <div class="kh-cell" id="kh-1">1</div>
+      <div class="kh-cell" id="kh-2">2</div>
+      <div class="kh-cell" id="kh-3">3</div>
+      <div class="kh-cell" id="kh-4">4</div>
+      <div class="kh-cell" id="kh-5">5</div>
+      <div class="kh-cell" id="kh-6">6</div>
+    </div>
   </div>
 
   <!-- ══ GAME OVER ══ -->
