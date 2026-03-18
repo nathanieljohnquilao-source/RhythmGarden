@@ -26,12 +26,12 @@
       <p class="title-sub">Hit plants on the beat before the ring closes.<br>Keep them alive. Keep the garden growing.</p>
 
       <div class="title-kb">
-        <div class="kb-title">CONTROLS</div>
+        <div class="kb-title">KEYBOARD CONTROLS</div>
         <div class="kb-grid">
-          <kbd class="kb-key">1</kbd><kbd class="kb-key">2</kbd><kbd class="kb-key">3</kbd>
           <kbd class="kb-key">4</kbd><kbd class="kb-key">5</kbd><kbd class="kb-key">6</kbd>
+          <kbd class="kb-key">1</kbd><kbd class="kb-key">2</kbd><kbd class="kb-key">3</kbd>
         </div>
-        <div class="kb-sub">Keys 1–6 map to each plant · Tap/click on mobile</div>
+        <div class="kb-sub">Keys match plant positions · Tap each cell on mobile</div>
       </div>
 
       <div class="title-hints">
@@ -42,32 +42,7 @@
       <button class="btn-start" id="btn-start">
         <span class="btn-icon">🌱</span> START GROWING
       </button>
-      <div class="title-bottom-row">
-        <div class="title-best" id="title-best"></div>
-        <button class="btn-settings" id="btn-open-settings" title="Keybind Settings">⚙ KEYBINDS</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ SETTINGS ══ -->
-  <div id="screen-settings" class="screen">
-    <div class="title-bg">
-      <div class="bg-blob b1"></div>
-      <div class="bg-blob b2"></div>
-    </div>
-    <div class="settings-content">
-      <h2 class="settings-title">⚙ KEYBIND SETTINGS</h2>
-      <p class="settings-sub">Click a key button then press any key to rebind.<br>
-        <span class="settings-mobile-note">On mobile, tap the plant's cell zone directly — keybinds are for keyboard only.</span>
-      </p>
-      <div class="settings-grid" id="settings-grid">
-        <!-- populated by JS -->
-      </div>
-      <div class="settings-conflict" id="settings-conflict"></div>
-      <div class="settings-actions">
-        <button class="btn-start" id="btn-settings-done">✓ DONE</button>
-        <button class="btn-ghost" id="btn-settings-reset">↺ RESET DEFAULTS</button>
-      </div>
+      <div class="title-best" id="title-best"></div>
     </div>
   </div>
 
@@ -89,14 +64,14 @@
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="feedback-layer"></div>
-    <!-- Key hint bar at bottom — shows 1-6 keys lighting up when active -->
+    <!-- Key hint bar at bottom — keys match plant positions -->
     <div id="key-hint">
-      <div class="kh-cell" id="kh-1">1</div>
-      <div class="kh-cell" id="kh-2">2</div>
-      <div class="kh-cell" id="kh-3">3</div>
-      <div class="kh-cell" id="kh-4">4</div>
-      <div class="kh-cell" id="kh-5">5</div>
-      <div class="kh-cell" id="kh-6">6</div>
+      <div class="kh-cell" id="kh-1">4</div>
+      <div class="kh-cell" id="kh-2">5</div>
+      <div class="kh-cell" id="kh-3">6</div>
+      <div class="kh-cell" id="kh-4">1</div>
+      <div class="kh-cell" id="kh-5">2</div>
+      <div class="kh-cell" id="kh-6">3</div>
     </div>
   </div>
 
