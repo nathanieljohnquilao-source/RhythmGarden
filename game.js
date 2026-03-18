@@ -24,24 +24,24 @@ function showScreen(id) {
   $(id).classList.add('active');
 }
 
-/* ── Keybinds ─────────────────────────────────────────────────────────────── */
-const DEFAULT_KEYS = ['1','2','3','4','5','6'];
-let KEYBINDS = loadKeybinds();
+/* ── Keybinds — fixed mapping per plant ──────────────────────────────────── */
+// Order: SUNBLOSSOM=4, ROSEBUD=5, CORALBELL=6, SKYBELL=1, MINTLEAF=2, LILACPUFF=3
+const KEYBINDS = ['4','5','6','1','2','3'];
 
-function loadKeybinds() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('rg_keys') || 'null');
-    if (Array.isArray(stored) && stored.length === 6 && stored.every(k => typeof k === 'string' && k.length > 0))
-      return stored;
-  } catch(e) {}
-  return [...DEFAULT_KEYS];
+function keyToPlant(key) { return KEYBINDS.indexOf(key); }
+function displayKey(key) {
+  const map = {' ':'Space','ArrowUp':'↑','ArrowDown':'↓','ArrowLeft':'←','ArrowRight':'→','Enter':'↵'};
+  return map[key] || (key.length === 1 ? key.toUpperCase() : key);
 }
-function saveKeybinds() {
-  localStorage.setItem('rg_keys', JSON.stringify(KEYBINDS));
+function syncKeyHintStrip() {
+  for (let i = 0; i < NUM_PLANTS; i++) {
+    const el = $(`kh-${i + 1}`);
+    if (el) el.textContent = displayKey(KEYBINDS[i]);
+  }
 }
-// Map a pressed key → plant index (-1 if no match)
-function keyToPlant(key) {
-  return KEYBINDS.indexOf(key);
+function updateTitleKbDisplay() {
+  const keys = document.querySelectorAll('.kb-key');
+  keys.forEach((k, i) => { if (KEYBINDS[i]) k.textContent = displayKey(KEYBINDS[i]); });
 }
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -67,15 +67,19 @@ const PLANT_TYPES = [
   { name:'LILACPUFF',  col:'#c084fc', col2:'#8800dd', petals:10, shape:'puff'    },
 ];
 
-// Beat patterns — when each plant wants a tap (in beats, 1=every beat)
-const PATTERNS = [
-  [1],     // every beat
-  [2],     // every 2 beats
-  [1],
-  [3],     // every 3 beats
-  [2],
-  [1],
+// Beat patterns available — chosen randomly per plant per run
+// Each value = beats until next ring fires
+const PATTERN_POOL = [
+  [2],    // every 2 beats — manageable
+  [3],    // every 3 beats — relaxed
+  [4],    // every 4 beats — slow
+  [2,3],  // alternates 2 then 3
+  [3,4],  // alternates 3 then 4
+  [4,4],  // slow steady
 ];
+
+// Assigned freshly each game in freshState()
+let runPatterns = [];
 
 /* ── Web Audio ───────────────────────────────────────────────────────────── */
 let audioCtx = null;
@@ -146,6 +150,10 @@ let animId = null;
 let lastTs = 0;
 
 function freshState() {
+  // Assign random patterns for this run — shuffle pool and pick 6
+  const shuffled = [...PATTERN_POOL].sort(() => Math.random() - 0.5);
+  runPatterns = Array.from({ length: NUM_PLANTS }, (_, i) => shuffled[i % shuffled.length]);
+
   return {
     phase: 'playing',   // playing | dead
     score: 0,
@@ -175,26 +183,29 @@ function freshState() {
 }
 
 function freshPlant(idx) {
-  const type = PLANT_TYPES[idx];
-  const pattern = PATTERNS[idx];
+  const type    = PLANT_TYPES[idx];
+  const pattern = runPatterns[idx] || [3];
+  // Random offset so each plant fires at a different beat — prevents all firing at once
+  // Offset is 1..pattern[0] so they spread across the cycle
+  const offset = 1 + Math.floor(Math.random() * pattern[0]);
   return {
     idx,
     type,
     pattern,
-    stage: 1,         // 1=seed, 2=sprout, 3=bloom, 4=wilt
-    beatPhase: 0,     // which beat in the pattern we're at
-    nextBeatIn: pattern[0], // beats until next tap needed
-    ringRadius: 0,    // 0-1 (1=full size, shrinks to center)
+    stage: 1,
+    beatPhase: 0,
+    nextBeatIn: offset,   // randomised stagger — different every run
+    ringRadius: 0,
     ringActive: false,
     ringStartTime: 0,
     ringDuration: 0,
-    tapped: false,    // locked after tap until next ring
-    hitResult: null,  // 'perfect'|'good'|'miss' — for visual
+    tapped: false,
+    hitResult: null,
     hitTimer: 0,
-    wobble: 0,        // animation wobble after tap
+    wobble: 0,
     wiltTimer: 0,
-    growTimer: 0,     // growing animation
-    bobOffset: Math.random() * Math.PI * 2, // idle bob phase
+    growTimer: 0,
+    bobOffset: Math.random() * Math.PI * 2,
   };
 }
 
@@ -246,108 +257,6 @@ $('btn-retry').addEventListener('click', startGame);
 $('btn-retry').addEventListener('touchstart', e => { e.preventDefault(); startGame(); }, { passive: false });
 $('btn-menu').addEventListener('click', () => showScreen('screen-title'));
 $('btn-menu').addEventListener('touchstart', e => { e.preventDefault(); showScreen('screen-title'); }, { passive: false });
-$('btn-open-settings').addEventListener('click', openSettings);
-$('btn-open-settings').addEventListener('touchstart', e => { e.preventDefault(); openSettings(); }, { passive: false });
-$('btn-settings-done').addEventListener('click', closeSettings);
-$('btn-settings-done').addEventListener('touchstart', e => { e.preventDefault(); closeSettings(); }, { passive: false });
-$('btn-settings-reset').addEventListener('click', resetKeybinds);
-$('btn-settings-reset').addEventListener('touchstart', e => { e.preventDefault(); resetKeybinds(); }, { passive: false });
-
-/* ── Settings screen ──────────────────────────────────────────────────────── */
-let listeningIdx = -1; // which plant slot is waiting for a key press
-
-function openSettings() {
-  listeningIdx = -1;
-  renderSettingsGrid();
-  showScreen('screen-settings');
-  // Listen for key presses to assign
-  document.addEventListener('keydown', onSettingsKey, { capture: true });
-}
-
-function closeSettings() {
-  document.removeEventListener('keydown', onSettingsKey, { capture: true });
-  listeningIdx = -1;
-  saveKeybinds();
-  syncKeyHintStrip();
-  updateTitleKbDisplay();
-  showScreen('screen-title');
-}
-
-function resetKeybinds() {
-  KEYBINDS = [...DEFAULT_KEYS];
-  listeningIdx = -1;
-  renderSettingsGrid();
-  $('settings-conflict').textContent = '';
-}
-
-function onSettingsKey(e) {
-  if (listeningIdx < 0) return;
-  e.preventDefault(); e.stopPropagation();
-
-  const key = e.key;
-  // Reject modifier-only keys
-  if (['Shift','Control','Alt','Meta','CapsLock','Tab','Escape'].includes(key)) {
-    if (key === 'Escape') { listeningIdx = -1; renderSettingsGrid(); }
-    return;
-  }
-
-  // Check for duplicates
-  const existing = KEYBINDS.indexOf(key);
-  if (existing >= 0 && existing !== listeningIdx) {
-    $('settings-conflict').textContent =
-      `⚠ "${displayKey(key)}" is already used for plant ${existing + 1}. Choose another.`;
-    return;
-  }
-
-  $('settings-conflict').textContent = '';
-  KEYBINDS[listeningIdx] = key;
-  listeningIdx = -1;
-  renderSettingsGrid();
-}
-
-function renderSettingsGrid() {
-  const grid = $('settings-grid');
-  grid.innerHTML = '';
-  const emojis = ['🌻','🌹','🪸','🔔','🍀','💜'];
-
-  PLANT_TYPES.forEach((type, i) => {
-    const card = document.createElement('div');
-    card.className = 'sb-card' + (listeningIdx === i ? ' listening' : '');
-
-    const icon = document.createElement('div');
-    icon.className = 'sb-plant-icon';
-    icon.textContent = emojis[i];
-
-    const name = document.createElement('div');
-    name.className = 'sb-plant-name';
-    name.style.color = type.col;
-    name.textContent = type.name;
-
-    const keyBtn = document.createElement('button');
-    keyBtn.className = 'sb-key-btn';
-    keyBtn.textContent = listeningIdx === i ? '...' : displayKey(KEYBINDS[i]);
-    keyBtn.title = 'Click to rebind';
-
-    const hint = document.createElement('div');
-    hint.className = 'sb-hint';
-    hint.textContent = listeningIdx === i ? 'press any key' : 'tap to rebind';
-
-    keyBtn.addEventListener('click', () => startListening(i));
-    keyBtn.addEventListener('touchstart', e2 => { e2.preventDefault(); startListening(i); }, { passive: false });
-
-    card.appendChild(icon);
-    card.appendChild(name);
-    card.appendChild(keyBtn);
-    card.appendChild(hint);
-    grid.appendChild(card);
-  });
-}
-
-function startListening(idx) {
-  listeningIdx = idx;
-  $('settings-conflict').textContent = '';
-  renderSettingsGrid();
-}
 
 function displayKey(key) {
   // Make special keys readable
@@ -419,17 +328,11 @@ canvas.addEventListener('touchstart', e => {
   }
 }, { passive: false });
 
-// Keyboard: look up key in KEYBINDS
+// Keyboard: look up pressed key in KEYBINDS
 document.addEventListener('keydown', e => {
-  // Settings: Escape closes
-  if (document.getElementById('screen-settings').classList.contains('active')) {
-    if (e.key === 'Escape') closeSettings();
-    return;
-  }
   if (G?.phase !== 'playing') return;
   const idx = keyToPlant(e.key);
-  if (idx >= 0) { e.preventDefault(); tapPlant(idx); return; }
-  if (e.key === 'Escape') return;
+  if (idx >= 0) { e.preventDefault(); tapPlant(idx); }
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -488,29 +391,70 @@ function onBeat() {
   // Hi-hat on every beat, open on 2 & 4
   playHat(now, G.beatCount % 4 === 1 || G.beatCount % 4 === 3);
 
-  // Beat ring flash
+  // Beat ring flash in HUD
   G.beatFlash = 0.18;
   G.bgPulse   = 1;
-
   const beatRingEl = $('beat-ring');
   beatRingEl.classList.remove('pulse');
   void beatRingEl.offsetWidth;
   beatRingEl.classList.add('pulse');
   setTimeout(() => beatRingEl.classList.remove('pulse'), 180);
 
-  // Activate rings for plants whose pattern fires this beat
+  // ── Concurrent-cap: max simultaneous active rings ──
+  // Level 1-3: max 2. Level 4+: max 3, but only if they share the same row.
+  const maxConcurrent = G.level >= 4 ? 3 : 2;
+
+  // Collect which plants want to fire this beat
+  const wantFire = [];
   for (const plant of G.plants) {
     plant.nextBeatIn--;
     if (plant.nextBeatIn <= 0) {
-      // Schedule next
       plant.nextBeatIn = plant.pattern[plant.beatPhase % plant.pattern.length];
       plant.beatPhase++;
-
-      if (plant.stage !== 4) { // not wilted
-        activateRing(plant);
+      if (plant.stage !== 4 && !plant.ringActive) {
+        wantFire.push(plant);
       }
     }
   }
+
+  if (wantFire.length === 0) return;
+
+  // Count already-active rings
+  const currentlyActive = G.plants.filter(p => p.ringActive && !p.tapped).length;
+  const slots = maxConcurrent - currentlyActive;
+  if (slots <= 0) return;
+
+  // Shuffle candidates so selection is random each beat
+  wantFire.sort(() => Math.random() - 0.5);
+
+  // If we'd be activating a 3rd ring (level 4+), enforce same-row rule:
+  // all 3 must be in the same row (indices 0-2 = top row, 3-5 = bottom row)
+  let toActivate = wantFire.slice(0, slots);
+
+  if (maxConcurrent === 3 && currentlyActive + toActivate.length === 3) {
+    // Check same-row constraint
+    const allActive = [
+      ...G.plants.filter(p => p.ringActive && !p.tapped),
+      ...toActivate,
+    ];
+    const rows = allActive.map(p => Math.floor(p.idx / COLS));
+    const sameRow = rows.every(r => r === rows[0]);
+    if (!sameRow) {
+      // Drop the third — only allow 2
+      const activeRows = G.plants
+        .filter(p => p.ringActive && !p.tapped)
+        .map(p => Math.floor(p.idx / COLS));
+      // Keep only candidates in the same row as existing actives (if any)
+      if (activeRows.length > 0) {
+        const targetRow = activeRows[0];
+        toActivate = toActivate.filter(p => Math.floor(p.idx / COLS) === targetRow).slice(0, 1);
+      } else {
+        toActivate = toActivate.slice(0, 2);
+      }
+    }
+  }
+
+  for (const plant of toActivate) activateRing(plant);
 }
 
 function activateRing(plant) {
