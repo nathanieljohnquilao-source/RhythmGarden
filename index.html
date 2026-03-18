@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a3a1a">
+  <title>RHYTHM GARDEN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ══ TITLE ══ -->
+  <div id="screen-title" class="screen active">
+    <div class="title-bg">
+      <div class="bg-blob b1"></div>
+      <div class="bg-blob b2"></div>
+      <div class="bg-blob b3"></div>
+      <div class="bg-blob b4"></div>
+    </div>
+    <div class="title-content">
+      <div class="title-leaf">🌿</div>
+      <h1 class="title-logo">RHYTHM<br><span class="title-accent">GARDEN</span></h1>
+      <p class="title-sub">Tap the plants on the beat.<br>Keep them alive. Keep the garden growing.</p>
+      <div class="title-hints">
+        <div class="hint"><span class="hint-dot perfect"></span>PERFECT = full ring</div>
+        <div class="hint"><span class="hint-dot good"></span>GOOD = near ring</div>
+        <div class="hint"><span class="hint-dot miss"></span>MISS = plant wilts</div>
+      </div>
+      <button class="btn-start" id="btn-start">
+        <span class="btn-icon">🌱</span> START GROWING
+      </button>
+      <div class="title-best" id="title-best"></div>
+    </div>
+  </div>
+
+  <!-- ══ GAME ══ -->
+  <div id="screen-game" class="screen">
+    <div id="hud">
+      <div class="hud-left">
+        <div class="hud-score-label">SCORE</div>
+        <div class="hud-score" id="hud-score">0</div>
+      </div>
+      <div class="hud-center">
+        <div class="hud-combo" id="hud-combo"></div>
+        <div class="beat-ring" id="beat-ring"></div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-lives" id="hud-lives">🌸🌸🌸</div>
+        <div class="hud-level" id="hud-level">LV 1</div>
+      </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="feedback-layer"></div>
+  </div>
+
+  <!-- ══ GAME OVER ══ -->
+  <div id="screen-over" class="screen">
+    <div class="over-bg">
+      <div class="over-blob ob1"></div>
+      <div class="over-blob ob2"></div>
+    </div>
+    <div class="over-content">
+      <div class="over-emoji" id="over-emoji">🥀</div>
+      <h2 class="over-title">GARDEN WILTED</h2>
+      <div class="over-score-label">FINAL SCORE</div>
+      <div class="over-score" id="over-score">0</div>
+      <div class="over-best" id="over-best"></div>
+      <div class="over-stats" id="over-stats"></div>
+      <button class="btn-start" id="btn-retry">🌱 TRY AGAIN</button>
+      <button class="btn-ghost" id="btn-menu">MENU</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
