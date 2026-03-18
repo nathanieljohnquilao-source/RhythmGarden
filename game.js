@@ -110,39 +110,167 @@ function playKick(time) {
   osc.start(time); osc.stop(time + 0.2);
 }
 
-// Hi-hat
-function playHat(time, open=false) {
+// Snare (noise burst + tonal body)
+function playSnare(time) {
   if (!audioCtx) return;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.value = open ? 6000 : 9000;
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 1200;
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(open ? 0.25 : 0.15, time);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + (open ? 0.18 : 0.06));
-  src.connect(filter); filter.connect(gain); gain.connect(masterGain);
+  gain.gain.setValueAtTime(0.35, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+  src.connect(filt); filt.connect(gain); gain.connect(masterGain);
   src.start(time); src.stop(time + 0.2);
 }
 
-// Melodic tone (plays on successful taps)
-function playTone(time, freq, vol=0.3) {
+// Hi-hat
+function playHat(time, open = false) {
+  if (!audioCtx) return;
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter(); filt.type = 'highpass';
+  filt.frequency.value = open ? 6000 : 9000;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(open ? 0.22 : 0.12, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + (open ? 0.16 : 0.05));
+  src.connect(filt); filt.connect(gain); gain.connect(masterGain);
+  src.start(time); src.stop(time + 0.2);
+}
+
+// Bass note (sine + slight distortion)
+function playBass(time, freq, dur) {
   if (!audioCtx) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.type = 'triangle';
-  osc.frequency.value = freq;
+  osc.type = 'sine'; osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0, time);
+  gain.gain.linearRampToValueAtTime(0.55, time + 0.02);
+  gain.gain.setValueAtTime(0.55, time + dur * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  osc.connect(gain); gain.connect(masterGain);
+  osc.start(time); osc.stop(time + dur + 0.05);
+}
+
+// Pad chord (multiple detuned triangle oscs)
+function playPad(time, freqs, dur) {
+  if (!audioCtx) return;
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.setValueAtTime(0.0, time);
+  gainNode.gain.linearRampToValueAtTime(0.12, time + 0.06);
+  gainNode.gain.setValueAtTime(0.12, time + dur * 0.7);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  gainNode.connect(masterGain);
+  freqs.forEach((f, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = f * (1 + i * 0.003); // slight detune for warmth
+    osc.connect(gainNode);
+    osc.start(time); osc.stop(time + dur + 0.1);
+  });
+}
+
+// Melodic tone (plays on successful taps)
+function playTone(time, freq, vol = 0.3) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle'; osc.frequency.value = freq;
   gain.gain.setValueAtTime(vol, time);
   gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
   osc.connect(gain); gain.connect(masterGain);
   osc.start(time); osc.stop(time + 0.3);
 }
 
-// Note frequencies per plant (pentatonic scale — always sounds good)
+// Note frequencies per plant (pentatonic scale C5)
 const PLANT_FREQS = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50];
+
+/* ── Procedural Music Scheduler ─────────────────────────────────────────────
+   Uses the Web Audio lookahead pattern: schedule notes ~300ms ahead,
+   check every ~100ms. Stays locked to G.beatInterval automatically.
+   
+   Song structure — 4-bar loop (16 beats):
+     Bass: C2 pentatonic walking line
+     Pads: soft chord stabs on beats 1 & 3 of each bar
+     Kick: beats 1 & 3
+     Snare: beats 2 & 4
+     Hi-hat: every beat (open on 2 & 4)
+────────────────────────────────────────────────────────────────────────────── */
+let musicTimer  = null;   // setInterval handle
+let nextNoteTime = 0;     // AudioContext time of next scheduled beat
+let scheduledBeat = 0;    // which beat index has been scheduled up to
+
+// Bass notes: C2 pentatonic (C D E G A) walking pattern over 16 beats
+const BASS_NOTES = [
+  65.41, 73.42, 82.41, 98.00,   // bar 1: C2 D2 E2 G2
+  98.00, 82.41, 73.42, 65.41,   // bar 2: G2 E2 D2 C2
+  65.41, 82.41, 98.00, 110.00,  // bar 3: C2 E2 G2 A2
+  110.00, 98.00, 82.41, 65.41,  // bar 4: A2 G2 E2 C2
+];
+
+// Pad chord sets (each = [root, third, fifth] in mid octave, bars 1-4)
+const PAD_CHORDS = [
+  [261.63, 329.63, 392.00],  // C major
+  [220.00, 261.63, 329.63],  // Am
+  [196.00, 246.94, 293.66],  // G major
+  [174.61, 220.00, 261.63],  // F major
+];
+
+function scheduleMusic() {
+  if (!audioCtx) return;
+  // Reset scheduler — next note aligns to current audio time
+  nextNoteTime  = audioCtx.currentTime + 0.05;
+  scheduledBeat = G ? G.beatCount : 0;
+}
+
+function tickMusicScheduler() {
+  if (!audioCtx || !G || G.phase !== 'playing') return;
+  if (audioCtx.state === 'suspended') return;
+
+  const LOOKAHEAD = 0.3; // seconds to schedule ahead
+  const bi = G.beatInterval;
+
+  while (nextNoteTime < audioCtx.currentTime + LOOKAHEAD) {
+    const beat  = scheduledBeat;
+    const bar   = Math.floor(beat / 4) % 4;   // 0-3
+    const pulse = beat % 4;                    // 0-3 within bar
+    const t     = nextNoteTime;
+
+    // Kick: beat 0 and 2 of each bar
+    if (pulse === 0 || pulse === 2) playKick(t);
+
+    // Snare: beat 1 and 3 of each bar
+    if (pulse === 1 || pulse === 3) playSnare(t);
+
+    // Hi-hat every beat
+    playHat(t, pulse === 1 || pulse === 3);
+
+    // Bass: one note per beat, walking line
+    const bassIdx = (Math.floor(beat / 4) * 4 + pulse) % BASS_NOTES.length;
+    playBass(t, BASS_NOTES[bassIdx], bi * 0.9);
+
+    // Pad stab on beat 0 of every bar (held for 2 beats)
+    if (pulse === 0) {
+      playPad(t, PAD_CHORDS[bar], bi * 1.8);
+    }
+
+    nextNoteTime += bi;
+    scheduledBeat++;
+  }
+}
+
+function startMusic() {
+  stopMusic();
+  scheduleMusic();
+  musicTimer = setInterval(tickMusicScheduler, 80); // check every 80ms
+}
+
+function stopMusic() {
+  if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+}
 
 /* ── Game state ──────────────────────────────────────────────────────────── */
 let G = null;
@@ -166,11 +294,11 @@ function freshState() {
     totalMiss: 0,
 
     // Timing
-    bpm: 90,
-    beatInterval: 60 / 90,  // seconds per beat
-    beatClock: 0,            // seconds since last beat
-    beatCount: 0,            // total beats elapsed
-    beatFlash: 0,            // countdown for beat ring flash
+    bpm: 72,
+    beatInterval: 60 / 72,  // seconds per beat — starts gentle
+    beatClock: 0,
+    beatCount: 0,
+    beatFlash: 0,
 
     // Plants
     plants: Array.from({ length: NUM_PLANTS }, (_, i) => freshPlant(i)),
@@ -282,6 +410,7 @@ function updateTitleKbDisplay() {
 function startGame() {
   initAudio(); resumeAudio();
   if (animId) cancelAnimationFrame(animId);
+  stopMusic();
   G = freshState();
   resize();
   showScreen('screen-game');
@@ -290,10 +419,12 @@ function startGame() {
   updateHUD();
   lastTs = performance.now();
   animId = requestAnimationFrame(loop);
+  startMusic();
 }
 
 function stopGame() {
   if (animId) { cancelAnimationFrame(animId); animId = null; }
+  stopMusic();
 }
 
 /* ── Input ───────────────────────────────────────────────────────────────── */
@@ -370,13 +501,14 @@ function update(dt, ts) {
   // Particles
   tickParticles(dt);
 
-  // Level up — BPM ramp
+  // Level up — BPM ramp (slower climb, gentler ceiling)
   const newLevel = 1 + Math.floor(G.score / 500);
   if (newLevel > G.level) {
     G.level = newLevel;
-    G.bpm = Math.min(160, 90 + (G.level - 1) * 8);
+    G.bpm = Math.min(138, 72 + (G.level - 1) * 6);
     G.beatInterval = 60 / G.bpm;
     $('hud-level').textContent = `LV ${G.level}`;
+    scheduleMusic(); // resync music lookahead on BPM change
   }
 
   updateHUD();
@@ -384,12 +516,6 @@ function update(dt, ts) {
 
 function onBeat() {
   resumeAudio();
-  const now = audioCtx ? audioCtx.currentTime : 0;
-
-  // Kick on beats 1 & 3 (4/4 time)
-  if (G.beatCount % 4 === 0 || G.beatCount % 4 === 2) playKick(now);
-  // Hi-hat on every beat, open on 2 & 4
-  playHat(now, G.beatCount % 4 === 1 || G.beatCount % 4 === 3);
 
   // Beat ring flash in HUD
   G.beatFlash = 0.18;
@@ -400,8 +526,13 @@ function onBeat() {
   beatRingEl.classList.add('pulse');
   setTimeout(() => beatRingEl.classList.remove('pulse'), 180);
 
+  // ── Difficulty gate: probability of allowing a 2nd (or 3rd) simultaneous ring ──
+  // Level 1 → ~15% doubles.  Level 5 → ~60%.  Level 8+ → ~80%.
+  // This is checked AFTER we know how many want to fire.
+  const doubleProb = Math.min(0.80, 0.10 + (G.level - 1) * 0.12);
+  const tripleProb = Math.min(0.50, (G.level - 4) * 0.12); // only possible lv4+
+
   // ── Concurrent-cap: max simultaneous active rings ──
-  // Level 1-3: max 2. Level 4+: max 3, but only if they share the same row.
   const maxConcurrent = G.level >= 4 ? 3 : 2;
 
   // Collect which plants want to fire this beat
@@ -424,12 +555,21 @@ function onBeat() {
   const slots = maxConcurrent - currentlyActive;
   if (slots <= 0) return;
 
-  // Shuffle candidates so selection is random each beat
-  wantFire.sort(() => Math.random() - 0.5);
+  // Apply probability gate — limit toActivate based on difficulty
+  let allowedExtra = wantFire.slice(0, slots);
 
-  // If we'd be activating a 3rd ring (level 4+), enforce same-row rule:
-  // all 3 must be in the same row (indices 0-2 = top row, 3-5 = bottom row)
-  let toActivate = wantFire.slice(0, slots);
+  // If more than 1 would fire, gate the extras probabilistically
+  if (allowedExtra.length >= 2) {
+    if (Math.random() > doubleProb) {
+      // Not allowed to double yet — fire only 1
+      allowedExtra = allowedExtra.slice(0, 1);
+    } else if (allowedExtra.length >= 3 && Math.random() > tripleProb) {
+      // Allowed double but not triple
+      allowedExtra = allowedExtra.slice(0, 2);
+    }
+  }
+
+  let toActivate = allowedExtra;
 
   if (maxConcurrent === 3 && currentlyActive + toActivate.length === 3) {
     // Check same-row constraint
