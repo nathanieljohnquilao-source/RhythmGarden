@@ -24,6 +24,26 @@ function showScreen(id) {
   $(id).classList.add('active');
 }
 
+/* ── Keybinds ─────────────────────────────────────────────────────────────── */
+const DEFAULT_KEYS = ['1','2','3','4','5','6'];
+let KEYBINDS = loadKeybinds();
+
+function loadKeybinds() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('rg_keys') || 'null');
+    if (Array.isArray(stored) && stored.length === 6 && stored.every(k => typeof k === 'string' && k.length > 0))
+      return stored;
+  } catch(e) {}
+  return [...DEFAULT_KEYS];
+}
+function saveKeybinds() {
+  localStorage.setItem('rg_keys', JSON.stringify(KEYBINDS));
+}
+// Map a pressed key → plant index (-1 if no match)
+function keyToPlant(key) {
+  return KEYBINDS.indexOf(key);
+}
+
 /* ── Constants ───────────────────────────────────────────────────────────── */
 const COLS = 3, ROWS = 2;      // 3×2 plant grid
 const NUM_PLANTS = COLS * ROWS; // 6
@@ -226,6 +246,128 @@ $('btn-retry').addEventListener('click', startGame);
 $('btn-retry').addEventListener('touchstart', e => { e.preventDefault(); startGame(); }, { passive: false });
 $('btn-menu').addEventListener('click', () => showScreen('screen-title'));
 $('btn-menu').addEventListener('touchstart', e => { e.preventDefault(); showScreen('screen-title'); }, { passive: false });
+$('btn-open-settings').addEventListener('click', openSettings);
+$('btn-open-settings').addEventListener('touchstart', e => { e.preventDefault(); openSettings(); }, { passive: false });
+$('btn-settings-done').addEventListener('click', closeSettings);
+$('btn-settings-done').addEventListener('touchstart', e => { e.preventDefault(); closeSettings(); }, { passive: false });
+$('btn-settings-reset').addEventListener('click', resetKeybinds);
+$('btn-settings-reset').addEventListener('touchstart', e => { e.preventDefault(); resetKeybinds(); }, { passive: false });
+
+/* ── Settings screen ──────────────────────────────────────────────────────── */
+let listeningIdx = -1; // which plant slot is waiting for a key press
+
+function openSettings() {
+  listeningIdx = -1;
+  renderSettingsGrid();
+  showScreen('screen-settings');
+  // Listen for key presses to assign
+  document.addEventListener('keydown', onSettingsKey, { capture: true });
+}
+
+function closeSettings() {
+  document.removeEventListener('keydown', onSettingsKey, { capture: true });
+  listeningIdx = -1;
+  saveKeybinds();
+  syncKeyHintStrip();
+  updateTitleKbDisplay();
+  showScreen('screen-title');
+}
+
+function resetKeybinds() {
+  KEYBINDS = [...DEFAULT_KEYS];
+  listeningIdx = -1;
+  renderSettingsGrid();
+  $('settings-conflict').textContent = '';
+}
+
+function onSettingsKey(e) {
+  if (listeningIdx < 0) return;
+  e.preventDefault(); e.stopPropagation();
+
+  const key = e.key;
+  // Reject modifier-only keys
+  if (['Shift','Control','Alt','Meta','CapsLock','Tab','Escape'].includes(key)) {
+    if (key === 'Escape') { listeningIdx = -1; renderSettingsGrid(); }
+    return;
+  }
+
+  // Check for duplicates
+  const existing = KEYBINDS.indexOf(key);
+  if (existing >= 0 && existing !== listeningIdx) {
+    $('settings-conflict').textContent =
+      `⚠ "${displayKey(key)}" is already used for plant ${existing + 1}. Choose another.`;
+    return;
+  }
+
+  $('settings-conflict').textContent = '';
+  KEYBINDS[listeningIdx] = key;
+  listeningIdx = -1;
+  renderSettingsGrid();
+}
+
+function renderSettingsGrid() {
+  const grid = $('settings-grid');
+  grid.innerHTML = '';
+  const emojis = ['🌻','🌹','🪸','🔔','🍀','💜'];
+
+  PLANT_TYPES.forEach((type, i) => {
+    const card = document.createElement('div');
+    card.className = 'sb-card' + (listeningIdx === i ? ' listening' : '');
+
+    const icon = document.createElement('div');
+    icon.className = 'sb-plant-icon';
+    icon.textContent = emojis[i];
+
+    const name = document.createElement('div');
+    name.className = 'sb-plant-name';
+    name.style.color = type.col;
+    name.textContent = type.name;
+
+    const keyBtn = document.createElement('button');
+    keyBtn.className = 'sb-key-btn';
+    keyBtn.textContent = listeningIdx === i ? '...' : displayKey(KEYBINDS[i]);
+    keyBtn.title = 'Click to rebind';
+
+    const hint = document.createElement('div');
+    hint.className = 'sb-hint';
+    hint.textContent = listeningIdx === i ? 'press any key' : 'tap to rebind';
+
+    keyBtn.addEventListener('click', () => startListening(i));
+    keyBtn.addEventListener('touchstart', e2 => { e2.preventDefault(); startListening(i); }, { passive: false });
+
+    card.appendChild(icon);
+    card.appendChild(name);
+    card.appendChild(keyBtn);
+    card.appendChild(hint);
+    grid.appendChild(card);
+  });
+}
+
+function startListening(idx) {
+  listeningIdx = idx;
+  $('settings-conflict').textContent = '';
+  renderSettingsGrid();
+}
+
+function displayKey(key) {
+  // Make special keys readable
+  const map = {' ':'Space','ArrowUp':'↑','ArrowDown':'↓','ArrowLeft':'←','ArrowRight':'→',
+    'Enter':'↵','Backspace':'⌫','Delete':'Del'};
+  return map[key] || (key.length === 1 ? key.toUpperCase() : key);
+}
+
+function syncKeyHintStrip() {
+  for (let i = 0; i < NUM_PLANTS; i++) {
+    const el = $(`kh-${i + 1}`);
+    if (el) el.textContent = displayKey(KEYBINDS[i]);
+  }
+}
+
+function updateTitleKbDisplay() {
+  // Update the static key grid on the title screen
+  const keys = document.querySelectorAll('.kb-key');
+  keys.forEach((k, i) => { if (KEYBINDS[i]) k.textContent = displayKey(KEYBINDS[i]); });
+}
 
 /* ── Start / Stop ─────────────────────────────────────────────────────────── */
 function startGame() {
@@ -235,6 +377,7 @@ function startGame() {
   resize();
   showScreen('screen-game');
   $('key-hint').style.display = 'flex';
+  syncKeyHintStrip();
   updateHUD();
   lastTs = performance.now();
   animId = requestAnimationFrame(loop);
@@ -276,18 +419,17 @@ canvas.addEventListener('touchstart', e => {
   }
 }, { passive: false });
 
-// Keyboard: keys 1-6 map to plants
+// Keyboard: look up key in KEYBINDS
 document.addEventListener('keydown', e => {
-  if (G?.phase !== 'playing') return;
-  const idx = parseInt(e.key) - 1;
-  if (idx >= 0 && idx < NUM_PLANTS) tapPlant(idx);
-  // Space = tap all active rings (accessibility)
-  if (e.key === ' ') {
-    e.preventDefault();
-    for (let i = 0; i < NUM_PLANTS; i++) {
-      if (G.plants[i].ringActive && !G.plants[i].tapped) tapPlant(i);
-    }
+  // Settings: Escape closes
+  if (document.getElementById('screen-settings').classList.contains('active')) {
+    if (e.key === 'Escape') closeSettings();
+    return;
   }
+  if (G?.phase !== 'playing') return;
+  const idx = keyToPlant(e.key);
+  if (idx >= 0) { e.preventDefault(); tapPlant(idx); return; }
+  if (e.key === 'Escape') return;
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -782,22 +924,23 @@ function drawPlant(plant, ts) {
   }
 
   // ── Key number badge (top-left of cell) ──
-  const keyNum = plant.idx + 1;
-  const badgeX = pos.x - pos.colW / 2 + 14;
-  const badgeY = pos.y - pos.rowH / 2 + 14;
+  const keyLabel = displayKey(KEYBINDS[plant.idx]);
+  const badgeX = pos.x - pos.colW / 2 + 16;
+  const badgeY = pos.y - pos.rowH / 2 + 16;
   const isActive = plant.ringActive && !plant.tapped;
   ctx.save();
   // Badge background
-  ctx.fillStyle = isActive ? type.col : 'rgba(0,0,0,.22)';
+  const badgeW = Math.max(24, keyLabel.length * 10 + 10);
+  ctx.fillStyle = isActive ? type.col : 'rgba(0,0,0,.28)';
   ctx.beginPath();
-  ctx.roundRect(badgeX - 12, badgeY - 12, 24, 24, 6);
+  ctx.roundRect(badgeX - badgeW/2, badgeY - 12, badgeW, 24, 6);
   ctx.fill();
-  // Key number
-  ctx.font = `900 14px 'Nunito', sans-serif`;
+  // Key label
+  ctx.font = `900 13px 'Nunito', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = isActive ? '#1a2e1a' : 'rgba(255,255,255,.5)';
-  ctx.fillText(keyNum, badgeX, badgeY);
+  ctx.fillStyle = isActive ? '#1a2e1a' : 'rgba(255,255,255,.6)';
+  ctx.fillText(keyLabel, badgeX, badgeY);
   ctx.restore();
 
   // ── Plant name label (bottom center of cell) ──
@@ -931,4 +1074,6 @@ function drawParticles() {
 /* ── Title screen art ────────────────────────────────────────────────────── */
 window.addEventListener('load', () => {
   updateTitleBest();
+  syncKeyHintStrip();
+  updateTitleKbDisplay();
 });
