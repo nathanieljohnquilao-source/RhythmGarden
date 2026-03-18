@@ -234,6 +234,7 @@ function startGame() {
   G = freshState();
   resize();
   showScreen('screen-game');
+  $('key-hint').style.display = 'flex';
   updateHUD();
   lastTs = performance.now();
   animId = requestAnimationFrame(loop);
@@ -248,13 +249,14 @@ function getPlantAt(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
-  let best = -1, bestD = Infinity;
-  for (let i = 0; i < NUM_PLANTS; i++) {
-    const p = plantPositions[i];
-    const d = Math.hypot(x - p.x, y - p.y);
-    if (d < p.r * 1.3 && d < bestD) { bestD = d; best = i; }
-  }
-  return best;
+  // Use full cell, not just plant radius — each cell owns its quadrant
+  if (plantPositions.length === 0) return -1;
+  const pos0 = plantPositions[0];
+  const colW = pos0.colW, rowH = pos0.rowH;
+  const col = Math.floor(x / colW);
+  const row = Math.floor(y / rowH);
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return -1;
+  return row * COLS + col;
 }
 
 canvas.addEventListener('click', e => {
@@ -515,6 +517,15 @@ function updateHUD() {
   } else {
     comboEl.textContent = '';
   }
+  // Key hint strip — light up cells with active rings
+  for (let i = 0; i < NUM_PLANTS; i++) {
+    const el = $(`kh-${i + 1}`);
+    if (!el) continue;
+    const plant = G.plants[i];
+    const active = plant.ringActive && !plant.tapped;
+    el.classList.toggle('active', active);
+    el.style.color = active ? plant.type.col : '';
+  }
 }
 
 function bumpScore() {
@@ -608,9 +619,9 @@ function draw(ts) {
   ctx.fillStyle = `rgb(${Math.round(45 + pulse * 255 * 0.15)},${Math.round(90 + pulse * 255 * 0.1)},${Math.round(39)})`;
   ctx.fillRect(0, 0, W, H);
 
-  // Grid dividers (soft)
-  ctx.strokeStyle = 'rgba(255,255,255,.05)';
-  ctx.lineWidth   = 1;
+  // Grid dividers — visible cell boundaries
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.lineWidth   = 2;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath(); ctx.moveTo(c * W/COLS, 0); ctx.lineTo(c * W/COLS, H); ctx.stroke();
   }
@@ -650,11 +661,15 @@ function drawPlant(plant, ts) {
   const { x, y, r } = pos;
   const type = plant.type;
 
-  // Cell hover glow when ring is active
+  // Cell highlight when ring is active — covers whole cell
   if (plant.ringActive && !plant.tapped) {
-    const alpha = 0.08 + Math.sin(ts / 200) * 0.04;
-    ctx.fillStyle = type.col + Math.round(alpha * 255).toString(16).padStart(2,'0');
-    ctx.fillRect(pos.x - pos.colW/2, pos.y - pos.rowH/2, pos.colW, pos.rowH);
+    const pulse = 0.06 + Math.sin(ts / 150) * 0.03;
+    ctx.fillStyle = type.col + Math.round(pulse * 255).toString(16).padStart(2, '0');
+    ctx.fillRect(pos.x - pos.colW / 2, pos.y - pos.rowH / 2, pos.colW, pos.rowH);
+    // Bright border around cell
+    ctx.strokeStyle = type.col + 'aa';
+    ctx.lineWidth   = 3;
+    ctx.strokeRect(pos.x - pos.colW / 2 + 2, pos.y - pos.rowH / 2 + 2, pos.colW - 4, pos.rowH - 4);
   }
 
   // Bob animation
@@ -766,7 +781,26 @@ function drawPlant(plant, ts) {
     ctx.restore();
   }
 
-  // ── Plant name label (tiny, at bottom of cell) ──
+  // ── Key number badge (top-left of cell) ──
+  const keyNum = plant.idx + 1;
+  const badgeX = pos.x - pos.colW / 2 + 14;
+  const badgeY = pos.y - pos.rowH / 2 + 14;
+  const isActive = plant.ringActive && !plant.tapped;
+  ctx.save();
+  // Badge background
+  ctx.fillStyle = isActive ? type.col : 'rgba(0,0,0,.22)';
+  ctx.beginPath();
+  ctx.roundRect(badgeX - 12, badgeY - 12, 24, 24, 6);
+  ctx.fill();
+  // Key number
+  ctx.font = `900 14px 'Nunito', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = isActive ? '#1a2e1a' : 'rgba(255,255,255,.5)';
+  ctx.fillText(keyNum, badgeX, badgeY);
+  ctx.restore();
+
+  // ── Plant name label (bottom center of cell) ──
   ctx.save();
   ctx.font = `700 ${Math.round(r * 0.2)}px 'Nunito', sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
